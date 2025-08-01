@@ -26,7 +26,7 @@ struct LedgerItem: Identifiable, Codable {
     var type: ItemType
     var date: Date
     var returnByDate: Date? // New property to indicate when the item should be returned
-    var isArchived: Bool = false // New property to mark an item as archived
+    var isArchived: Bool = false // New property to mark an item as deleted
     var conditionNotes: String? // New property for any condition notes
     var imageData: Data? // New property to store image data
     
@@ -72,7 +72,7 @@ class LedgerViewModel: ObservableObject {
         }
     }
     
-    // Computed properties to easily get filtered lists (excluding archived items).
+    // Computed properties to easily get filtered lists (excluding deleted items).
     var lentItems: [LedgerItem] {
         items.filter { $0.type == .lent && !$0.isArchived }
     }
@@ -81,8 +81,8 @@ class LedgerViewModel: ObservableObject {
         items.filter { $0.type == .borrowed && !$0.isArchived }
     }
     
-    // Computed property for archived items
-    var archivedItems: [LedgerItem] {
+    // Computed property for deleted items
+    var deletedItems: [LedgerItem] {
         items.filter { $0.isArchived }
     }
     
@@ -128,20 +128,27 @@ class LedgerViewModel: ObservableObject {
         items.insert(newItem, at: 0) // Add to the top of the list
     }
     
-    // Function to archive an item instead of deleting it.
-    func archiveItem(at offsets: IndexSet, from section: ItemType) {
-        let idsToArchive = offsets.map { (section == .lent ? lentItems : borrowedItems)[$0].id }
+    // Function to delete an item (move to deleted section).
+    func deleteItem(at offsets: IndexSet, from section: ItemType) {
+        let idsToDelete = offsets.map { (section == .lent ? lentItems : borrowedItems)[$0].id }
         for i in items.indices {
-            if idsToArchive.contains(items[i].id) {
+            if idsToDelete.contains(items[i].id) {
                 items[i].isArchived = true
             }
         }
     }
     
-    // Function to permanently delete archived items
-    func deleteArchivedItem(at offsets: IndexSet) {
-        let idsToDelete = offsets.map { archivedItems[$0].id }
+    // Function to permanently delete items from deleted section
+    func permanentlyDeleteItem(at offsets: IndexSet) {
+        let idsToDelete = offsets.map { deletedItems[$0].id }
         items.removeAll { idsToDelete.contains($0.id) }
+    }
+    
+    // Function to recover an item from deleted section
+    func recoverItem(item: LedgerItem) {
+        if let index = items.firstIndex(where: { $0.id == item.id }) {
+            items[index].isArchived = false
+        }
     }
     
     func loadSampleData() {
@@ -295,6 +302,11 @@ struct ContentView: View {
     // `@State` for search text
     @State private var searchText = ""
     
+    // `@State` for deletion confirmation
+    @State private var showingDeleteConfirmation = false
+    @State private var itemToDelete: LedgerItem?
+    @State private var indexSetToDelete: IndexSet?
+    
     var body: some View {
         NavigationView {
             List {
@@ -305,11 +317,13 @@ struct ContentView: View {
                             .foregroundColor(.secondary)
                     } else {
                         ForEach(viewModel.filteredLentItems(searchText: searchText)) { item in
-                            LedgerRowView(item: item)
+                            NavigationLink(destination: LedgerDetailView(item: item, viewModel: viewModel)) {
+                                LedgerRowView(item: item)
+                            }
                         }
-                        // This modifier enables the "swipe to archive" gesture.
+                        // This modifier enables the "swipe to delete" gesture.
                         .onDelete { offsets in
-                            viewModel.archiveItem(at: offsets, from: .lent)
+                            viewModel.deleteItem(at: offsets, from: .lent)
                         }
                     }
                 } header: {
@@ -323,31 +337,54 @@ struct ContentView: View {
                             .foregroundColor(.secondary)
                     } else {
                         ForEach(viewModel.filteredBorrowedItems(searchText: searchText)) { item in
-                            LedgerRowView(item: item)
+                            NavigationLink(destination: LedgerDetailView(item: item, viewModel: viewModel)) {
+                                LedgerRowView(item: item)
+                            }
                         }
                         .onDelete { offsets in
-                            viewModel.archiveItem(at: offsets, from: .borrowed)
+                            viewModel.deleteItem(at: offsets, from: .borrowed)
                         }
                     }
                 } header: {
                     Text("I Borrowed (\(viewModel.borrowedItems.count))")
                 }
                 
-                // --- ARCHIVED ITEMS SECTION ---
+                // --- DELETED ITEMS SECTION ---
                 Section {
-                    if viewModel.archivedItems.isEmpty {
-                        Text("No archived items.")
+                    if viewModel.deletedItems.isEmpty {
+                        Text("No deleted items.")
                             .foregroundColor(.secondary)
                     } else {
-                        ForEach(viewModel.archivedItems) { item in
-                            LedgerRowView(item: item)
+                        ForEach(viewModel.deletedItems) { item in
+                            NavigationLink(destination: LedgerDetailView(item: item, viewModel: viewModel)) {
+                                HStack {
+                                    LedgerRowView(item: item)
+                                    
+                                    Spacer()
+                                    
+                                    Button("Recover") {
+                                        viewModel.recoverItem(item: item)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .foregroundColor(.blue)
+                                }
+                            }
                         }
                         .onDelete { offsets in
-                            viewModel.deleteArchivedItem(at: offsets)
+                            indexSetToDelete = offsets
+                            if let index = offsets.first {
+                                itemToDelete = viewModel.deletedItems[index]
+                                showingDeleteConfirmation = true
+                            }
                         }
                     }
                 } header: {
-                    Text("Archived Items (\(viewModel.archivedItems.count))")
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Deleted Items (\(viewModel.deletedItems.count))")
+                        Text("Items will automatically delete after 30 days.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
             .listStyle(.insetGrouped) // A modern iOS list style.
@@ -367,49 +404,95 @@ struct ContentView: View {
                 AddItemView(viewModel: viewModel)
             }
             .searchable(text: $searchText, prompt: "Search items or people")
+            .alert("Confirm Deletion", isPresented: $showingDeleteConfirmation) {
+                Button("Cancel", role: .cancel) {
+                    itemToDelete = nil
+                    indexSetToDelete = nil
+                }
+                Button("Delete", role: .destructive) {
+                    if let indexSet = indexSetToDelete {
+                        viewModel.permanentlyDeleteItem(at: indexSet)
+                    }
+                    itemToDelete = nil
+                    indexSetToDelete = nil
+                }
+            } message: {
+                Text("Are you sure you want to permanently delete this item? This action cannot be undone.")
+            }
         }
     }
 }
 
 
-// In Xcode, you would put this in its own file: `ArchiveView.swift`
-struct ArchiveView: View {
+// In Xcode, you would put this in its own file: `EditItemView.swift`
+struct EditItemView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var viewModel: LedgerViewModel
+    @State private var item: LedgerItem
+    
+    @State private var itemName: String
+    @State private var personName: String
+    @State private var itemType: ItemType
+    @State private var returnByDate: Date
+    @State private var conditionNotes: String
+    @State private var imageData: Data?
+    
+    init(item: LedgerItem, viewModel: LedgerViewModel) {
+        self.viewModel = viewModel
+        self._item = State(initialValue: item)
+        self._itemName = State(initialValue: item.name)
+        self._personName = State(initialValue: item.person)
+        self._itemType = State(initialValue: item.type)
+        self._returnByDate = State(initialValue: item.returnByDate ?? Date())
+        self._conditionNotes = State(initialValue: item.conditionNotes ?? "")
+        self._imageData = State(initialValue: item.imageData)
+    }
     
     var body: some View {
         NavigationView {
-            List {
-                if viewModel.archivedItems.isEmpty {
-                    Text("No archived items.")
-                        .foregroundColor(.secondary)
-                        .font(.subheadline)
-                        .padding()
-                } else {
-                    ForEach(viewModel.archivedItems) { item in
-                        NavigationLink(destination: LedgerDetailView(item: item)) {
-                            LedgerRowView(item: item)
+            Form {
+                Section(header: Text("Item Details")) {
+                    TextField("Item Name", text: $itemName)
+                    TextField("Person's Name", text: $personName)
+                }
+                
+                Section {
+                    Picker("Type", selection: $itemType) {
+                        ForEach(ItemType.allCases, id: \.self) { type in
+                            Text(type.rawValue).tag(type)
                         }
                     }
-                    .onDelete { offsets in
-                        viewModel.deleteArchivedItem(at: offsets)
-                    }
+                    .pickerStyle(.segmented)
                 }
-            }
-            .navigationTitle("Archive History")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Done") {
+                
+                Section(header: Text("Additional Details")) {
+                    DatePicker("Return By", selection: $returnByDate, displayedComponents: .date)
+                    TextField("Condition Notes", text: $conditionNotes)
+                }
+                
+                Section {
+                    Button("Save Changes") {
+                        updateItem()
                         dismiss()
                     }
-                }
-                if !viewModel.archivedItems.isEmpty {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        EditButton()
-                    }
+                    .disabled(itemName.isEmpty || personName.isEmpty)
                 }
             }
+            .navigationTitle("Edit Item")
+            .navigationBarItems(leading: Button("Cancel") {
+                dismiss()
+            })
+        }
+    }
+    
+    private func updateItem() {
+        if let index = viewModel.items.firstIndex(where: { $0.id == item.id }) {
+            viewModel.items[index].name = itemName
+            viewModel.items[index].person = personName
+            viewModel.items[index].type = itemType
+            viewModel.items[index].returnByDate = returnByDate
+            viewModel.items[index].conditionNotes = conditionNotes.isEmpty ? nil : conditionNotes
+            viewModel.items[index].imageData = imageData
         }
     }
 }
@@ -418,6 +501,8 @@ struct ArchiveView: View {
 // In Xcode, you would put this in its own file: `LedgerDetailView.swift`
 struct LedgerDetailView: View {
     let item: LedgerItem
+    @ObservedObject var viewModel: LedgerViewModel
+    @State private var isShowingEditView = false
     
     var body: some View {
         ScrollView {
@@ -507,14 +592,14 @@ struct LedgerDetailView: View {
                     }
                 }
                 
-                // Archive Status
+                // Deleted Status
                 if item.isArchived {
                     Divider()
                     Label {
-                        Text("This item has been archived")
+                        Text("This item has been deleted")
                             .foregroundColor(.orange)
                     } icon: {
-                        Image(systemName: "archivebox.fill")
+                        Image(systemName: "trash.fill")
                             .foregroundColor(.orange)
                     }
                 }
@@ -525,6 +610,16 @@ struct LedgerDetailView: View {
         }
         .navigationTitle("Item Details")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Edit") {
+                    isShowingEditView = true
+                }
+            }
+        }
+        .sheet(isPresented: $isShowingEditView) {
+            EditItemView(item: item, viewModel: viewModel)
+        }
     }
 }
 
