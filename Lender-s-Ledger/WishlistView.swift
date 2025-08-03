@@ -32,7 +32,9 @@ struct WishlistView: View {
                     .padding(.vertical, 40)
                 } else {
                     ForEach(viewModel.filteredWishlistItems(searchText: searchText)) { item in
-                        WishlistItemRow(item: item)
+                        NavigationLink(destination: EditWishlistItemView(item: item, viewModel: viewModel)) {
+                            WishlistItemRow(item: item)
+                        }
                     }
                     .onDelete { offsets in
                         viewModel.deleteWishlistItem(at: offsets)
