@@ -5,6 +5,7 @@
 //  Created by user12 on 2025/7/29.
 //
 
+import Foundation
 import Testing
 @testable import Lender_s_Ledger
 
@@ -20,7 +21,7 @@ struct Lender_s_LedgerTests {
         let item = LedgerItem(
             name: "Test Item",
             person: "Test Person", 
-            type: .lent,
+            type: ItemType.lent,
             date: Date(),
             imageData: sampleImageData
         )
@@ -29,7 +30,7 @@ struct Lender_s_LedgerTests {
         #expect(item.imageData == sampleImageData)
         #expect(item.name == "Test Item")
         #expect(item.person == "Test Person")
-        #expect(item.type == .lent)
+        #expect(item.type == ItemType.lent)
     }
     
     @Test func testLedgerViewModelAddItemWithImage() async throws {
@@ -41,7 +42,7 @@ struct Lender_s_LedgerTests {
         viewModel.addItem(
             name: "Camera Test Item",
             person: "Test User",
-            type: .borrowed,
+            type: ItemType.borrowed,
             imageData: sampleImageData
         )
         
@@ -49,7 +50,7 @@ struct Lender_s_LedgerTests {
         let addedItem = viewModel.items.first
         #expect(addedItem?.name == "Camera Test Item")
         #expect(addedItem?.imageData == sampleImageData)
-        #expect(addedItem?.type == .borrowed)
+        #expect(addedItem?.type == ItemType.borrowed)
     }
 
 }
