@@ -175,6 +175,39 @@ class LedgerViewModel: ObservableObject {
         }
     }
     
+    // Function to filter items based on AppStateManager filters
+    func filteredItems(searchText: String, appState: AppStateManager) -> ([LedgerItem], [LedgerItem]) {
+        var lentItems = filteredLentItems(searchText: searchText)
+        var borrowedItems = filteredBorrowedItems(searchText: searchText)
+        
+        // Apply AppStateManager filters
+        if let tagFilter = appState.activeTagFilter {
+            lentItems = lentItems.filter { $0.tags.contains(tagFilter) }
+            borrowedItems = borrowedItems.filter { $0.tags.contains(tagFilter) }
+        }
+        
+        if let typeFilter = appState.activeTypeFilter {
+            if typeFilter == .lent {
+                borrowedItems = []
+            } else {
+                lentItems = []
+            }
+        }
+        
+        if let statusFilter = appState.activeStatusFilter {
+            switch statusFilter {
+            case .overdue:
+                lentItems = lentItems.filter { $0.isOverdue }
+                borrowedItems = borrowedItems.filter { $0.isOverdue }
+            case .all:
+                // No additional filtering needed
+                break
+            }
+        }
+        
+        return (lentItems, borrowedItems)
+    }
+    
     init() {
         // Load some sample data when the app starts.
         loadSampleData()
@@ -205,6 +238,17 @@ class LedgerViewModel: ObservableObject {
             tags: tags
         )
         wishlistItems.insert(newItem, at: 0)
+    }
+    
+    // Function to update a wishlist item
+    func updateWishlistItem(id: UUID, name: String, description: String? = nil, estimatedPrice: Double? = nil, priority: WishlistPriority = .medium, tags: [String] = []) {
+        if let index = wishlistItems.firstIndex(where: { $0.id == id }) {
+            wishlistItems[index].name = name
+            wishlistItems[index].description = description
+            wishlistItems[index].estimatedPrice = estimatedPrice
+            wishlistItems[index].priority = priority
+            wishlistItems[index].tags = tags
+        }
     }
     
     // Function to delete an item (move to deleted section).
@@ -511,6 +555,7 @@ struct ContentView: View {
     // Use environment objects instead of @StateObject
     @EnvironmentObject var viewModel: LedgerViewModel
     @EnvironmentObject var calendarManager: CalendarManager
+    @EnvironmentObject var appStateManager: AppStateManager
     
     // `@State` to control whether the "Add Item" sheet is showing.
     @State private var isShowingAddItemView = false
@@ -524,83 +569,118 @@ struct ContentView: View {
     @State private var indexSetToDelete: IndexSet?
     @State private var isShowingQRScanner = false
     
+    // Computed property for filtered items
+    private var filteredItemsResult: (lent: [LedgerItem], borrowed: [LedgerItem]) {
+        return viewModel.filteredItems(searchText: searchText, appState: appStateManager)
+    }
+    
     var body: some View {
         NavigationView {
-            List {
-                // --- LENT SECTION ---
-                Section {
-                    if viewModel.lentItems.isEmpty {
-                        Text("You haven't lent any items yet.")
-                            .foregroundColor(.secondary)
-                    } else {
-                        ForEach(viewModel.filteredLentItems(searchText: searchText)) { item in
-                            NavigationLink(destination: LedgerDetailView(item: item, viewModel: viewModel)) {
-                                LedgerRowView(item: item)
-                            }
+            VStack {
+                // Active filter indicator
+                if appStateManager.hasActiveFilter {
+                    HStack {
+                        Label(appStateManager.filterDescription, systemImage: "line.3.horizontal.decrease.circle.fill")
+                            .foregroundColor(.blue)
+                            .font(.caption)
+                        
+                        Spacer()
+                        
+                        Button("Clear Filter") {
+                            appStateManager.clearFilters()
                         }
-                        // This modifier enables the "swipe to delete" gesture.
-                        .onDelete { offsets in
-                            viewModel.deleteItem(at: offsets, from: .lent)
-                        }
+                        .font(.caption)
+                        .foregroundColor(.red)
                     }
-                } header: {
-                    Text("I Lent (\(viewModel.lentItems.count))")
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    .background(Color.blue.opacity(0.1))
                 }
                 
-                // --- BORROWED SECTION ---
-                Section {
-                    if viewModel.borrowedItems.isEmpty {
-                        Text("You haven't borrowed any items.")
-                            .foregroundColor(.secondary)
-                    } else {
-                        ForEach(viewModel.filteredBorrowedItems(searchText: searchText)) { item in
-                            NavigationLink(destination: LedgerDetailView(item: item, viewModel: viewModel)) {
-                                LedgerRowView(item: item)
-                            }
-                        }
-                        .onDelete { offsets in
-                            viewModel.deleteItem(at: offsets, from: .borrowed)
-                        }
-                    }
-                } header: {
-                    Text("I Borrowed (\(viewModel.borrowedItems.count))")
-                }
-                
-                // --- DELETED ITEMS SECTION ---
-                Section {
-                    if viewModel.deletedItems.isEmpty {
-                        Text("No deleted items.")
-                            .foregroundColor(.secondary)
-                    } else {
-                        ForEach(viewModel.deletedItems) { item in
-                            NavigationLink(destination: LedgerDetailView(item: item, viewModel: viewModel)) {
-                                HStack {
+                List {
+                    // --- LENT SECTION ---
+                    Section {
+                        if filteredItemsResult.lent.isEmpty {
+                            Text("You haven't lent any items yet.")
+                                .foregroundColor(.secondary)
+                        } else {
+                            ForEach(filteredItemsResult.lent) { item in
+                                NavigationLink(destination: LedgerDetailView(item: item, viewModel: viewModel)) {
                                     LedgerRowView(item: item)
-                                    
-                                    Spacer()
-                                    
-                                    Button("Recover") {
-                                        viewModel.recoverItem(item: item)
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .foregroundColor(.blue)
                                 }
                             }
-                        }
-                        .onDelete { offsets in
-                            indexSetToDelete = offsets
-                            if let index = offsets.first {
-                                itemToDelete = viewModel.deletedItems[index]
-                                showingDeleteConfirmation = true
+                            // This modifier enables the "swipe to delete" gesture.
+                            .onDelete { offsets in
+                                let itemsToDelete = IndexSet(offsets.map { filteredItemsResult.lent[$0] }.compactMap { item in
+                                    viewModel.lentItems.firstIndex(where: { $0.id == item.id })
+                                })
+                                viewModel.deleteItem(at: itemsToDelete, from: .lent)
                             }
                         }
+                    } header: {
+                        Text("I Lent (\(filteredItemsResult.lent.count))")
                     }
-                } header: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Deleted Items (\(viewModel.deletedItems.count))")
-                        Text("Items will automatically delete after 30 days.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                    
+                    // --- BORROWED SECTION ---
+                    Section {
+                        if filteredItemsResult.borrowed.isEmpty {
+                            Text("You haven't borrowed any items.")
+                                .foregroundColor(.secondary)
+                        } else {
+                            ForEach(filteredItemsResult.borrowed) { item in
+                                NavigationLink(destination: LedgerDetailView(item: item, viewModel: viewModel)) {
+                                    LedgerRowView(item: item)
+                                }
+                            }
+                            .onDelete { offsets in
+                                let itemsToDelete = IndexSet(offsets.map { filteredItemsResult.borrowed[$0] }.compactMap { item in
+                                    viewModel.borrowedItems.firstIndex(where: { $0.id == item.id })
+                                })
+                                viewModel.deleteItem(at: itemsToDelete, from: .borrowed)
+                            }
+                        }
+                    } header: {
+                        Text("I Borrowed (\(filteredItemsResult.borrowed.count))")
+                    }
+                    
+                    // --- DELETED ITEMS SECTION (only show when no filters active) ---
+                    if !appStateManager.hasActiveFilter {
+                        Section {
+                            if viewModel.deletedItems.isEmpty {
+                                Text("No deleted items.")
+                                    .foregroundColor(.secondary)
+                            } else {
+                                ForEach(viewModel.deletedItems) { item in
+                                    NavigationLink(destination: LedgerDetailView(item: item, viewModel: viewModel)) {
+                                        HStack {
+                                            LedgerRowView(item: item)
+                                            
+                                            Spacer()
+                                            
+                                            Button("Recover") {
+                                                viewModel.recoverItem(item: item)
+                                            }
+                                            .buttonStyle(.bordered)
+                                            .foregroundColor(.blue)
+                                        }
+                                    }
+                                }
+                                .onDelete { offsets in
+                                    indexSetToDelete = offsets
+                                    if let index = offsets.first {
+                                        itemToDelete = viewModel.deletedItems[index]
+                                        showingDeleteConfirmation = true
+                                    }
+                                }
+                            }
+                        } header: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Deleted Items (\(viewModel.deletedItems.count))")
+                                Text("Items will automatically delete after 30 days.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
                     }
                 }
             }
@@ -820,10 +900,15 @@ struct LedgerDetailView: View {
     let item: LedgerItem
     @ObservedObject var viewModel: LedgerViewModel
     @EnvironmentObject var calendarManager: CalendarManager
+    @EnvironmentObject var appStateManager: AppStateManager
+    @Environment(\.presentationMode) var presentationMode
     @State private var isShowingEditView = false
     @State private var isShowingShareSheet = false
     @State private var isShowingQRShare = false
     @State private var shareText = ""
+    @State private var showingCalendarAlert = false
+    @State private var calendarAlertMessage = ""
+    @State private var calendarAlertTitle = ""
     
     var body: some View {
         ScrollView {
@@ -891,7 +976,7 @@ struct LedgerDetailView: View {
                     }
                 }
                 
-                // Tags Display
+                // Tags Display - Now Clickable
                 if !item.tags.isEmpty {
                     Divider()
                     VStack(alignment: .leading, spacing: 8) {
@@ -907,13 +992,19 @@ struct LedgerDetailView: View {
                             GridItem(.adaptive(minimum: 80))
                         ], spacing: 8) {
                             ForEach(item.tags, id: \.self) { tag in
-                                Text(tag)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.blue.opacity(0.1))
-                                    .foregroundColor(.blue)
-                                    .cornerRadius(12)
-                                    .font(.caption)
+                                Button {
+                                    appStateManager.filterByTag(tag)
+                                    presentationMode.wrappedValue.dismiss()
+                                } label: {
+                                    Text(tag)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.blue.opacity(0.1))
+                                        .foregroundColor(.blue)
+                                        .cornerRadius(12)
+                                        .font(.caption)
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                         .padding(.leading, 28)
@@ -1019,14 +1110,33 @@ struct LedgerDetailView: View {
         .sheet(isPresented: $isShowingQRShare) {
             QRCodeShareView(item: item)
         }
+        .alert(calendarAlertTitle, isPresented: $showingCalendarAlert) {
+            Button("OK") { }
+        } message: {
+            Text(calendarAlertMessage)
+        }
     }
     
     private func addToCalendar() async {
         guard let returnDate = item.returnByDate else { return }
-        let success = await calendarManager.addReturnReminder(for: item)
-        if !success {
-            print("Failed to add calendar reminder")
+        
+        // Check calendar authorization status first
+        if calendarManager.authorizationStatus == .denied {
+            calendarAlertTitle = "Calendar Access Denied"
+            calendarAlertMessage = "Please enable calendar access in Settings to add reminders."
+            showingCalendarAlert = true
+            return
         }
+        
+        let success = await calendarManager.addReturnReminder(for: item)
+        if success {
+            calendarAlertTitle = "Calendar Event Added"
+            calendarAlertMessage = "A reminder to return \"\(item.name)\" has been added to your calendar."
+        } else {
+            calendarAlertTitle = "Calendar Error"
+            calendarAlertMessage = "Unable to add calendar reminder. Please check your calendar permissions."
+        }
+        showingCalendarAlert = true
     }
 }
 

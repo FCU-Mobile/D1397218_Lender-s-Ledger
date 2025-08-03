@@ -9,6 +9,7 @@ import SwiftUI
 
 struct DashboardView: View {
     @ObservedObject var viewModel: LedgerViewModel
+    @EnvironmentObject var appStateManager: AppStateManager
     
     var body: some View {
         NavigationView {
@@ -19,33 +20,53 @@ struct DashboardView: View {
                         GridItem(.flexible()),
                         GridItem(.flexible())
                     ], spacing: 16) {
-                        StatCard(
-                            title: "Items Lent",
-                            value: "\(viewModel.totalLentItems)",
-                            icon: "arrow.up.circle.fill",
-                            color: .blue
-                        )
+                        Button {
+                            appStateManager.filterByType(.lent)
+                        } label: {
+                            StatCard(
+                                title: "Items Lent",
+                                value: "\(viewModel.totalLentItems)",
+                                icon: "arrow.up.circle.fill",
+                                color: .blue
+                            )
+                        }
+                        .buttonStyle(.plain)
                         
-                        StatCard(
-                            title: "Items Borrowed",
-                            value: "\(viewModel.totalBorrowedItems)",
-                            icon: "arrow.down.circle.fill",
-                            color: .green
-                        )
+                        Button {
+                            appStateManager.filterByType(.borrowed)
+                        } label: {
+                            StatCard(
+                                title: "Items Borrowed",
+                                value: "\(viewModel.totalBorrowedItems)",
+                                icon: "arrow.down.circle.fill",
+                                color: .green
+                            )
+                        }
+                        .buttonStyle(.plain)
                         
-                        StatCard(
-                            title: "Overdue Items",
-                            value: "\(viewModel.totalOverdueItems)",
-                            icon: "exclamationmark.triangle.fill",
-                            color: .red
-                        )
+                        Button {
+                            appStateManager.filterByStatus(.overdue)
+                        } label: {
+                            StatCard(
+                                title: "Overdue Items",
+                                value: "\(viewModel.totalOverdueItems)",
+                                icon: "exclamationmark.triangle.fill",
+                                color: .red
+                            )
+                        }
+                        .buttonStyle(.plain)
                         
-                        StatCard(
-                            title: "Total Active",
-                            value: "\(viewModel.totalLentItems + viewModel.totalBorrowedItems)",
-                            icon: "list.bullet.circle.fill",
-                            color: .purple
-                        )
+                        Button {
+                            appStateManager.filterByStatus(.all)
+                        } label: {
+                            StatCard(
+                                title: "Total Active",
+                                value: "\(viewModel.totalLentItems + viewModel.totalBorrowedItems)",
+                                icon: "list.bullet.circle.fill",
+                                color: .purple
+                            )
+                        }
+                        .buttonStyle(.plain)
                     }
                     
                     // Recent Activity
@@ -87,13 +108,18 @@ struct DashboardView: View {
                                 GridItem(.adaptive(minimum: 80))
                             ], spacing: 8) {
                                 ForEach(Array(viewModel.allActiveTags.prefix(10)), id: \.self) { tag in
-                                    Text(tag)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 6)
-                                        .background(Color.blue.opacity(0.1))
-                                        .foregroundColor(.blue)
-                                        .cornerRadius(16)
-                                        .font(.caption)
+                                    Button {
+                                        appStateManager.filterByTag(tag)
+                                    } label: {
+                                        Text(tag)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 6)
+                                            .background(Color.blue.opacity(0.1))
+                                            .foregroundColor(.blue)
+                                            .cornerRadius(16)
+                                            .font(.caption)
+                                    }
+                                    .buttonStyle(.plain)
                                 }
                             }
                             .padding(.horizontal)
