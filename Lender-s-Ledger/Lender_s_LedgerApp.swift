@@ -11,7 +11,6 @@ import SwiftUI
 struct Lender_s_LedgerApp: App {
     @StateObject private var viewModel = LedgerViewModel()
     @StateObject private var calendarManager = CalendarManager()
-    @StateObject private var cloudKitManager = CloudKitManager()
     
     var body: some Scene {
         WindowGroup {
@@ -19,7 +18,6 @@ struct Lender_s_LedgerApp: App {
                 ContentView()
                     .environmentObject(viewModel)
                     .environmentObject(calendarManager)
-                    .environmentObject(cloudKitManager)
                     .tabItem {
                         Image(systemName: "list.bullet")
                         Text("Ledger")
