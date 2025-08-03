@@ -52,5 +52,29 @@ struct Lender_s_LedgerTests {
         #expect(addedItem?.imageData == sampleImageData)
         #expect(addedItem?.type == ItemType.borrowed)
     }
+    
+    @Test func testShareableLedgerItemEncoding() async throws {
+        // Test that ShareableLedgerItem can be encoded and decoded correctly
+        let originalItem = LedgerItem(
+            name: "Test Book",
+            person: "Alice",
+            type: .lent,
+            date: Date(),
+            returnByDate: Calendar.current.date(byAdding: .day, value: 7, to: Date()),
+            conditionNotes: "Good condition",
+            tags: ["books", "fiction"]
+        )
+        
+        let shareableItem = ShareableLedgerItem.from(originalItem)
+        let jsonData = try JSONEncoder().encode(shareableItem)
+        let decodedItem = try JSONDecoder().decode(ShareableLedgerItem.self, from: jsonData)
+        let reconstructedItem = decodedItem.toLedgerItem()
+        
+        #expect(reconstructedItem.name == originalItem.name)
+        #expect(reconstructedItem.person == originalItem.person)
+        #expect(reconstructedItem.type == originalItem.type)
+        #expect(reconstructedItem.conditionNotes == originalItem.conditionNotes)
+        #expect(reconstructedItem.tags == originalItem.tags)
+    }
 
 }
