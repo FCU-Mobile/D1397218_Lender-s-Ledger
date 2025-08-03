@@ -30,6 +30,7 @@ struct LedgerItem: Identifiable, Codable {
     var isArchived: Bool = false // New property to mark an item as deleted
     var conditionNotes: String? // New property for any condition notes
     var imageData: Data? // New property to store image data
+    var tags: [String] = [] // New property for categorization tags
     
     // A computed property to format the date nicely.
     var formattedDate: String {
@@ -57,6 +58,32 @@ struct LedgerItem: Identifiable, Codable {
     }
 }
 
+// Wishlist item data model
+struct WishlistItem: Identifiable, Codable {
+    var id = UUID()
+    var name: String
+    var description: String?
+    var estimatedPrice: Double?
+    var priority: WishlistPriority = .medium
+    var dateAdded: Date = Date()
+    var tags: [String] = []
+    
+    var formattedPrice: String? {
+        if let price = estimatedPrice {
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .currency
+            return formatter.string(from: NSNumber(value: price))
+        }
+        return nil
+    }
+}
+
+enum WishlistPriority: String, CaseIterable, Codable {
+    case low = "Low"
+    case medium = "Medium" 
+    case high = "High"
+}
+
 
 // --- VIEW MODEL ---
 // In Xcode, you would put this in its own file: `LedgerViewModel.swift`
@@ -70,6 +97,12 @@ class LedgerViewModel: ObservableObject {
         // This `didSet` block is a good place to add code to save data later.
         didSet {
             print("Items updated!")
+        }
+    }
+    
+    @Published var wishlistItems: [WishlistItem] = [] {
+        didSet {
+            print("Wishlist updated!")
         }
     }
     
@@ -87,6 +120,24 @@ class LedgerViewModel: ObservableObject {
         items.filter { $0.isArchived }
     }
     
+    // Statistics computed properties
+    var totalLentItems: Int {
+        lentItems.count
+    }
+    
+    var totalBorrowedItems: Int {
+        borrowedItems.count
+    }
+    
+    var totalOverdueItems: Int {
+        items.filter { $0.isOverdue }.count
+    }
+    
+    var allActiveTags: [String] {
+        let allTags = items.filter { !$0.isArchived }.flatMap { $0.tags }
+        return Array(Set(allTags)).sorted()
+    }
+    
     // Function to filter items based on search text
     func filteredLentItems(searchText: String) -> [LedgerItem] {
         if searchText.isEmpty {
@@ -94,7 +145,8 @@ class LedgerViewModel: ObservableObject {
         } else {
             return lentItems.filter { item in
                 item.name.localizedCaseInsensitiveContains(searchText) ||
-                item.person.localizedCaseInsensitiveContains(searchText)
+                item.person.localizedCaseInsensitiveContains(searchText) ||
+                item.tags.contains { $0.localizedCaseInsensitiveContains(searchText) }
             }
         }
     }
@@ -105,7 +157,20 @@ class LedgerViewModel: ObservableObject {
         } else {
             return borrowedItems.filter { item in
                 item.name.localizedCaseInsensitiveContains(searchText) ||
-                item.person.localizedCaseInsensitiveContains(searchText)
+                item.person.localizedCaseInsensitiveContains(searchText) ||
+                item.tags.contains { $0.localizedCaseInsensitiveContains(searchText) }
+            }
+        }
+    }
+    
+    func filteredWishlistItems(searchText: String) -> [WishlistItem] {
+        if searchText.isEmpty {
+            return wishlistItems
+        } else {
+            return wishlistItems.filter { item in
+                item.name.localizedCaseInsensitiveContains(searchText) ||
+                item.description?.localizedCaseInsensitiveContains(searchText) == true ||
+                item.tags.contains { $0.localizedCaseInsensitiveContains(searchText) }
             }
         }
     }
@@ -116,7 +181,7 @@ class LedgerViewModel: ObservableObject {
     }
     
     // Enhanced function to add a new item with all new properties.
-    func addItem(name: String, person: String, type: ItemType, returnByDate: Date? = nil, conditionNotes: String? = nil, imageData: Data? = nil) {
+    func addItem(name: String, person: String, type: ItemType, returnByDate: Date? = nil, conditionNotes: String? = nil, imageData: Data? = nil, tags: [String] = []) {
         let newItem = LedgerItem(
             name: name,
             person: person,
@@ -124,9 +189,22 @@ class LedgerViewModel: ObservableObject {
             date: Date(),
             returnByDate: returnByDate,
             conditionNotes: conditionNotes,
-            imageData: imageData
+            imageData: imageData,
+            tags: tags
         )
         items.insert(newItem, at: 0) // Add to the top of the list
+    }
+    
+    // Function to add a wishlist item
+    func addWishlistItem(name: String, description: String? = nil, estimatedPrice: Double? = nil, priority: WishlistPriority = .medium, tags: [String] = []) {
+        let newItem = WishlistItem(
+            name: name,
+            description: description,
+            estimatedPrice: estimatedPrice,
+            priority: priority,
+            tags: tags
+        )
+        wishlistItems.insert(newItem, at: 0)
     }
     
     // Function to delete an item (move to deleted section).
@@ -137,6 +215,11 @@ class LedgerViewModel: ObservableObject {
                 items[i].isArchived = true
             }
         }
+    }
+    
+    // Function to delete wishlist items
+    func deleteWishlistItem(at offsets: IndexSet) {
+        wishlistItems.remove(atOffsets: offsets)
     }
     
     // Function to permanently delete items from deleted section
@@ -152,6 +235,29 @@ class LedgerViewModel: ObservableObject {
         }
     }
     
+    // Function to generate a polite reminder message
+    func generateReminderMessage(for item: LedgerItem) -> String {
+        let timePhrase: String
+        if let returnDate = item.returnByDate {
+            let daysDiff = Calendar.current.dateComponents([.day], from: Date(), to: returnDate).day ?? 0
+            if daysDiff < 0 {
+                timePhrase = "which was due \(abs(daysDiff)) day(s) ago"
+            } else if daysDiff == 0 {
+                timePhrase = "which is due today"
+            } else {
+                timePhrase = "which is due in \(daysDiff) day(s)"
+            }
+        } else {
+            timePhrase = "when you get a chance"
+        }
+        
+        let baseMessage = item.type == .lent
+            ? "Hi! I hope you're doing well. I was wondering if you could return my \(item.name) \(timePhrase)?"
+            : "Hi! Just a friendly reminder that I have your \(item.name) \(timePhrase). Let me know when you'd like it back!"
+        
+        return "\(baseMessage) Thanks! 😊"
+    }
+    
     func loadSampleData() {
         let calendar = Calendar.current
         let today = Date()
@@ -163,14 +269,16 @@ class LedgerViewModel: ObservableObject {
                 type: .lent,
                 date: Date().addingTimeInterval(-86400 * 5),
                 returnByDate: calendar.date(byAdding: .day, value: -2, to: today), // Overdue
-                conditionNotes: "Good condition, paperback"
+                conditionNotes: "Good condition, paperback",
+                tags: ["books", "fantasy", "paperback"]
             ),
             LedgerItem(
                 name: "Portable Charger",
                 person: "Brenda",
                 type: .lent,
                 date: Date().addingTimeInterval(-86400 * 2),
-                returnByDate: calendar.date(byAdding: .day, value: 3, to: today)
+                returnByDate: calendar.date(byAdding: .day, value: 3, to: today),
+                tags: ["electronics", "charger", "portable"]
             ),
             LedgerItem(
                 name: "Ladder",
@@ -178,13 +286,33 @@ class LedgerViewModel: ObservableObject {
                 type: .borrowed,
                 date: Date().addingTimeInterval(-86400 * 1),
                 returnByDate: calendar.date(byAdding: .day, value: 5, to: today),
-                conditionNotes: "Excellent condition, aluminum"
+                conditionNotes: "Excellent condition, aluminum",
+                tags: ["tools", "aluminum", "household"]
             ),
             LedgerItem(
                 name: "HDMI Cable",
                 person: "Diana",
                 type: .lent,
-                date: Date()
+                date: Date(),
+                tags: ["electronics", "cable", "hdmi"]
+            )
+        ]
+        
+        // Sample wishlist data
+        self.wishlistItems = [
+            WishlistItem(
+                name: "iPad Pro",
+                description: "Latest model for digital art",
+                estimatedPrice: 999.0,
+                priority: .high,
+                tags: ["electronics", "tablet", "apple"]
+            ),
+            WishlistItem(
+                name: "Standing Desk",
+                description: "Adjustable height desk for home office",
+                estimatedPrice: 299.0,
+                priority: .medium,
+                tags: ["furniture", "office", "health"]
             )
         ]
     }
@@ -209,6 +337,8 @@ struct AddItemView: View {
     @State private var conditionNotes = ""
     @State private var imageData: Data? = nil
     @State private var selectedPhotoItem: PhotosPickerItem? = nil
+    @State private var currentTag = ""
+    @State private var tags: [String] = []
     
     var body: some View {
         NavigationView {
@@ -231,6 +361,44 @@ struct AddItemView: View {
                 Section(header: Text("Additional Details")) {
                     DatePicker("Return By", selection: $returnByDate, displayedComponents: .date)
                     TextField("Condition Notes", text: $conditionNotes)
+                }
+                
+                Section(header: Text("Tags")) {
+                    HStack {
+                        TextField("Add tag", text: $currentTag)
+                            .onSubmit {
+                                addTag()
+                            }
+                        
+                        Button("Add") {
+                            addTag()
+                        }
+                        .disabled(currentTag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    
+                    if !tags.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack {
+                                ForEach(tags, id: \.self) { tag in
+                                    HStack(spacing: 4) {
+                                        Text(tag)
+                                        Button {
+                                            removeTag(tag)
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.blue.opacity(0.1))
+                                    .foregroundColor(.blue)
+                                    .cornerRadius(12)
+                                    .font(.caption)
+                                }
+                            }
+                        }
+                    }
                 }
                 
                 Section(header: Text("Photo")) {
@@ -276,7 +444,8 @@ struct AddItemView: View {
                                 type: itemType,
                                 returnByDate: returnByDate,
                                 conditionNotes: conditionNotes,
-                                imageData: imageData
+                                imageData: imageData,
+                                tags: tags
                             )
                             dismiss() // Close the sheet
                         }
@@ -289,6 +458,18 @@ struct AddItemView: View {
                 dismiss()
             })
         }
+    }
+    
+    private func addTag() {
+        let trimmedTag = currentTag.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !trimmedTag.isEmpty && !tags.contains(trimmedTag) {
+            tags.append(trimmedTag)
+            currentTag = ""
+        }
+    }
+    
+    private func removeTag(_ tag: String) {
+        tags.removeAll { $0 == tag }
     }
 }
 
@@ -327,9 +508,10 @@ struct LedgerRowView: View {
 
 // In Xcode, this would be your main view file: `ContentView.swift`
 struct ContentView: View {
-    // `@StateObject` creates and owns the instance of our view model.
-    // This object will stay alive for the entire lifecycle of the view.
-    @StateObject private var viewModel = LedgerViewModel()
+    // Use environment objects instead of @StateObject
+    @EnvironmentObject var viewModel: LedgerViewModel
+    @EnvironmentObject var calendarManager: CalendarManager
+    @EnvironmentObject var cloudKitManager: CloudKitManager
     
     // `@State` to control whether the "Add Item" sheet is showing.
     @State private var isShowingAddItemView = false
@@ -472,6 +654,8 @@ struct EditItemView: View {
     @State private var conditionNotes: String
     @State private var imageData: Data?
     @State private var selectedPhotoItem: PhotosPickerItem? = nil
+    @State private var currentTag = ""
+    @State private var tags: [String] = []
     
     init(item: LedgerItem, viewModel: LedgerViewModel) {
         self.viewModel = viewModel
@@ -482,6 +666,7 @@ struct EditItemView: View {
         self._returnByDate = State(initialValue: item.returnByDate ?? Date())
         self._conditionNotes = State(initialValue: item.conditionNotes ?? "")
         self._imageData = State(initialValue: item.imageData)
+        self._tags = State(initialValue: item.tags)
     }
     
     var body: some View {
@@ -504,6 +689,44 @@ struct EditItemView: View {
                 Section(header: Text("Additional Details")) {
                     DatePicker("Return By", selection: $returnByDate, displayedComponents: .date)
                     TextField("Condition Notes", text: $conditionNotes)
+                }
+                
+                Section(header: Text("Tags")) {
+                    HStack {
+                        TextField("Add tag", text: $currentTag)
+                            .onSubmit {
+                                addTag()
+                            }
+                        
+                        Button("Add") {
+                            addTag()
+                        }
+                        .disabled(currentTag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    
+                    if !tags.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack {
+                                ForEach(tags, id: \.self) { tag in
+                                    HStack(spacing: 4) {
+                                        Text(tag)
+                                        Button {
+                                            removeTag(tag)
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.blue.opacity(0.1))
+                                    .foregroundColor(.blue)
+                                    .cornerRadius(12)
+                                    .font(.caption)
+                                }
+                            }
+                        }
+                    }
                 }
                 
                 Section(header: Text("Photo")) {
@@ -562,7 +785,20 @@ struct EditItemView: View {
             viewModel.items[index].returnByDate = returnByDate
             viewModel.items[index].conditionNotes = conditionNotes.isEmpty ? nil : conditionNotes
             viewModel.items[index].imageData = imageData
+            viewModel.items[index].tags = tags
         }
+    }
+    
+    private func addTag() {
+        let trimmedTag = currentTag.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !trimmedTag.isEmpty && !tags.contains(trimmedTag) {
+            tags.append(trimmedTag)
+            currentTag = ""
+        }
+    }
+    
+    private func removeTag(_ tag: String) {
+        tags.removeAll { $0 == tag }
     }
 }
 
@@ -571,7 +807,10 @@ struct EditItemView: View {
 struct LedgerDetailView: View {
     let item: LedgerItem
     @ObservedObject var viewModel: LedgerViewModel
+    @EnvironmentObject var calendarManager: CalendarManager
     @State private var isShowingEditView = false
+    @State private var isShowingShareSheet = false
+    @State private var shareText = ""
     
     var body: some View {
         ScrollView {
@@ -639,6 +878,67 @@ struct LedgerDetailView: View {
                     }
                 }
                 
+                // Tags Display
+                if !item.tags.isEmpty {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label {
+                            Text("Tags")
+                                .font(.headline)
+                        } icon: {
+                            Image(systemName: "tag")
+                                .foregroundColor(.blue)
+                        }
+                        
+                        LazyVGrid(columns: [
+                            GridItem(.adaptive(minimum: 80))
+                        ], spacing: 8) {
+                            ForEach(item.tags, id: \.self) { tag in
+                                Text(tag)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.blue.opacity(0.1))
+                                    .foregroundColor(.blue)
+                                    .cornerRadius(12)
+                                    .font(.caption)
+                            }
+                        }
+                        .padding(.leading, 28)
+                    }
+                }
+                
+                // Action Buttons
+                if !item.isArchived {
+                    Divider()
+                    VStack(spacing: 12) {
+                        // Calendar Button (only for items with return dates)
+                        if item.returnByDate != nil {
+                            Button {
+                                Task {
+                                    await addToCalendar()
+                                }
+                            } label: {
+                                Label("Add to Calendar", systemImage: "calendar.badge.plus")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .foregroundColor(.green)
+                        }
+                        
+                        // Reminder Button
+                        Button {
+                            shareText = viewModel.generateReminderMessage(for: item)
+                            isShowingShareSheet = true
+                        } label: {
+                            Label("Send Polite Reminder", systemImage: "message")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .foregroundColor(.blue)
+                    }
+                    .padding(.horizontal)
+                }
+                
                 // Photo Display
                 if let imageData = item.imageData,
                    let uiImage = UIImage(data: imageData) {
@@ -690,6 +990,31 @@ struct LedgerDetailView: View {
         .sheet(isPresented: $isShowingEditView) {
             EditItemView(item: item, viewModel: viewModel)
         }
+        .sheet(isPresented: $isShowingShareSheet) {
+            ShareSheet(items: [shareText])
+        }
+    }
+    
+    private func addToCalendar() async {
+        guard let returnDate = item.returnByDate else { return }
+        let success = await calendarManager.addReturnReminder(for: item)
+        if !success {
+            print("Failed to add calendar reminder")
+        }
+    }
+}
+
+// ShareSheet wrapper for UIActivityViewController
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        return controller
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
+        // No updates needed
     }
 }
 
@@ -698,4 +1023,7 @@ struct LedgerDetailView: View {
 // This is just for Xcode's preview canvas, so you can see your UI without running the app.
 #Preview {
     ContentView()
+        .environmentObject(LedgerViewModel())
+        .environmentObject(CalendarManager())
+        .environmentObject(CloudKitManager())
 }
