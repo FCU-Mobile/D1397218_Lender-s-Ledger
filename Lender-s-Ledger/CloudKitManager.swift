@@ -19,25 +19,48 @@ class CloudKitManager: ObservableObject {
     init() {
         container = CKContainer.default()
         database = container.privateCloudDatabase
+        print("CloudKitManager initialized with container: \(container.containerIdentifier ?? "default")")
         checkiCloudStatus()
     }
     
     func checkiCloudStatus() {
+        print("Checking iCloud status...")
         container.accountStatus { [weak self] status, error in
             DispatchQueue.main.async {
                 if let error = error {
+                    print("iCloud status check failed: \(error.localizedDescription)")
                     self?.error = error.localizedDescription
                     self?.isSignedInToiCloud = false
                 } else {
+                    let statusDescription = self?.statusDescription(for: status) ?? "unknown"
+                    print("iCloud status: \(statusDescription)")
                     self?.isSignedInToiCloud = (status == .available)
                 }
             }
         }
     }
     
+    private func statusDescription(for status: CKAccountStatus) -> String {
+        switch status {
+        case .couldNotDetermine:
+            return "could not determine"
+        case .available:
+            return "available"
+        case .restricted:
+            return "restricted"
+        case .noAccount:
+            return "no account"
+        case .temporarilyUnavailable:
+            return "temporarily unavailable"
+        @unknown default:
+            return "unknown status"
+        }
+    }
+    
     // MARK: - Ledger Items
     
     func saveLedgerItem(_ item: LedgerItem) async throws {
+        print("Saving ledger item: \(item.name)")
         let record = CKRecord(recordType: "LedgerItem")
         record["name"] = item.name
         record["person"] = item.person
@@ -56,12 +79,15 @@ class CloudKitManager: ObservableObject {
         
         do {
             _ = try await database.save(record)
+            print("Successfully saved ledger item: \(item.name)")
         } catch {
+            print("Failed to save ledger item: \(error.localizedDescription)")
             throw error
         }
     }
     
     func fetchLedgerItems() async throws -> [LedgerItem] {
+        print("Fetching ledger items from CloudKit...")
         let query = CKQuery(recordType: "LedgerItem", predicate: NSPredicate(value: true))
         let result = try await database.records(matching: query)
         
@@ -73,16 +99,18 @@ class CloudKitManager: ObservableObject {
                     items.append(item)
                 }
             case .failure(let error):
-                print("Failed to fetch record: \(error)")
+                print("Failed to fetch record: \(error.localizedDescription)")
             }
         }
         
+        print("Successfully fetched \(items.count) ledger items")
         return items
     }
     
     // MARK: - Wishlist Items
     
     func saveWishlistItem(_ item: WishlistItem) async throws {
+        print("Saving wishlist item: \(item.name)")
         let record = CKRecord(recordType: "WishlistItem")
         record["name"] = item.name
         record["itemDescription"] = item.description
@@ -93,12 +121,15 @@ class CloudKitManager: ObservableObject {
         
         do {
             _ = try await database.save(record)
+            print("Successfully saved wishlist item: \(item.name)")
         } catch {
+            print("Failed to save wishlist item: \(error.localizedDescription)")
             throw error
         }
     }
     
     func fetchWishlistItems() async throws -> [WishlistItem] {
+        print("Fetching wishlist items from CloudKit...")
         let query = CKQuery(recordType: "WishlistItem", predicate: NSPredicate(value: true))
         let result = try await database.records(matching: query)
         
@@ -110,10 +141,11 @@ class CloudKitManager: ObservableObject {
                     items.append(item)
                 }
             case .failure(let error):
-                print("Failed to fetch wishlist record: \(error)")
+                print("Failed to fetch wishlist record: \(error.localizedDescription)")
             }
         }
         
+        print("Successfully fetched \(items.count) wishlist items")
         return items
     }
     
