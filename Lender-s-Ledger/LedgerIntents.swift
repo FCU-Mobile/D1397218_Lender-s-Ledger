@@ -30,7 +30,7 @@ struct FindLentItemsIntent: AppIntent {
             response = "Here are your currently lent items:\n\n" + sampleItems.joined(separator: "\n")
         }
         
-        return .result(dialog: IntentDialog(response))
+        return .result(dialog: IntentDialog(stringLiteral: response))
     }
 }
 

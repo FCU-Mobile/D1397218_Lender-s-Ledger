@@ -57,7 +57,9 @@ struct QRCodeShareView: View {
                 }
                 
                 if qrCodeImage != nil {
-                    ShareLink(item: qrCodeImage!, preview: SharePreview("QR Code for \(item.name)")) {
+                    ShareLink(item: qrCodeImage!.pngData()!,
+                              preview: SharePreview("QR Code for \(item.name)",
+                                                  image: Image(uiImage: qrCodeImage!))) {
                         Label("Share QR Code", systemImage: "square.and.arrow.up")
                             .frame(maxWidth: .infinity)
                     }
