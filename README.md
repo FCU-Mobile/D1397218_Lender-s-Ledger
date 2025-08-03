@@ -4,7 +4,6 @@
 [![Swift](https://img.shields.io/badge/Swift-5.9-orange.svg)](https://swift.org/)
 [![SwiftUI](https://img.shields.io/badge/SwiftUI-4.0-green.svg)](https://developer.apple.com/xcode/swiftui/)
 [![Xcode](https://img.shields.io/badge/Xcode-15.0%2B-lightgrey.svg)](https://developer.apple.com/xcode/)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > A beautiful and intuitive iOS app for tracking your lent and borrowed items with smart features and seamless sharing.
 
