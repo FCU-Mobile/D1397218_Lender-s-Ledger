@@ -37,29 +37,6 @@ Built with modern iOS technologies, the app offers a native, fluid experience wi
 - **📊 Activity Tracking** - Monitor recent lending and borrowing activity
 - **🏷️ Popular Tags** - Quick access to frequently used categories
 
-## 📱 Screenshots
-
-> *Screenshots will be added here to showcase the app's beautiful interface*
-
-### Main Ledger View
-```
-[Screenshot placeholder - Main ledger with lent/borrowed items]
-```
-
-### Dashboard Analytics
-```
-[Screenshot placeholder - Dashboard with statistics and charts]
-```
-
-### QR Code Sharing
-```
-[Screenshot placeholder - QR code generation and scanning]
-```
-
-### Item Details
-```
-[Screenshot placeholder - Detailed item view with photo and notes]
-```
 
 ## 🚀 Installation Instructions
 
