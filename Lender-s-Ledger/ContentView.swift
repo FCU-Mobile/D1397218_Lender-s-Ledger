@@ -511,7 +511,6 @@ struct ContentView: View {
     // Use environment objects instead of @StateObject
     @EnvironmentObject var viewModel: LedgerViewModel
     @EnvironmentObject var calendarManager: CalendarManager
-    @EnvironmentObject var cloudKitManager: CloudKitManager
     
     // `@State` to control whether the "Add Item" sheet is showing.
     @State private var isShowingAddItemView = false
@@ -1052,5 +1051,4 @@ struct ShareSheet: UIViewControllerRepresentable {
     ContentView()
         .environmentObject(LedgerViewModel())
         .environmentObject(CalendarManager())
-        .environmentObject(CloudKitManager())
 }

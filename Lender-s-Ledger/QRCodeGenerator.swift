@@ -15,6 +15,7 @@ struct QRCodeShareView: View {
     @State private var qrCodeImage: UIImage?
     @State private var errorMessage: String?
     @State private var isGenerating = false
+    @State private var isShowingShareSheet = false
     
     var body: some View {
         NavigationView {
@@ -57,9 +58,9 @@ struct QRCodeShareView: View {
                 }
                 
                 if qrCodeImage != nil {
-                    ShareLink(item: qrCodeImage!.pngData()!,
-                              preview: SharePreview("QR Code for \(item.name)",
-                                                  image: Image(uiImage: qrCodeImage!))) {
+                    Button {
+                        shareQRCode()
+                    } label: {
                         Label("Share QR Code", systemImage: "square.and.arrow.up")
                             .frame(maxWidth: .infinity)
                     }
@@ -79,6 +80,11 @@ struct QRCodeShareView: View {
                         dismiss()
                     }
                 }
+            }
+        }
+        .sheet(isPresented: $isShowingShareSheet) {
+            if let qrImage = qrCodeImage {
+                ShareSheet(items: [qrImage])
             }
         }
         .onAppear {
@@ -111,6 +117,10 @@ struct QRCodeShareView: View {
                 }
             }
         }
+    }
+    
+    private func shareQRCode() {
+        isShowingShareSheet = true
     }
 }
 
