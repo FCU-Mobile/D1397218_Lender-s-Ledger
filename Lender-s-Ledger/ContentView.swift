@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import PhotosUI
 
 // --- DATA MODEL ---
 // In Xcode, you would put this in its own file: `LedgerItem.swift`
@@ -207,6 +208,7 @@ struct AddItemView: View {
     @State private var returnByDate = Date()
     @State private var conditionNotes = ""
     @State private var imageData: Data? = nil
+    @State private var selectedPhotoItem: PhotosPickerItem? = nil
     
     var body: some View {
         NavigationView {
@@ -229,6 +231,39 @@ struct AddItemView: View {
                 Section(header: Text("Additional Details")) {
                     DatePicker("Return By", selection: $returnByDate, displayedComponents: .date)
                     TextField("Condition Notes", text: $conditionNotes)
+                }
+                
+                Section(header: Text("Photo")) {
+                    PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                        Label("Select Photo", systemImage: "camera")
+                    }
+                    
+                    if let imageData = imageData,
+                       let uiImage = UIImage(data: imageData) {
+                        HStack {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxHeight: 100)
+                                .cornerRadius(8)
+                                .shadow(radius: 2)
+                            
+                            Spacer()
+                            
+                            Button("Remove") {
+                                self.imageData = nil
+                                self.selectedPhotoItem = nil
+                            }
+                            .foregroundColor(.red)
+                        }
+                    }
+                }
+                .onChange(of: selectedPhotoItem) { _, newItem in
+                    Task {
+                        if let data = try? await newItem?.loadTransferable(type: Data.self) {
+                            imageData = data
+                        }
+                    }
                 }
                 
                 Section {
@@ -436,6 +471,7 @@ struct EditItemView: View {
     @State private var returnByDate: Date
     @State private var conditionNotes: String
     @State private var imageData: Data?
+    @State private var selectedPhotoItem: PhotosPickerItem? = nil
     
     init(item: LedgerItem, viewModel: LedgerViewModel) {
         self.viewModel = viewModel
@@ -468,6 +504,39 @@ struct EditItemView: View {
                 Section(header: Text("Additional Details")) {
                     DatePicker("Return By", selection: $returnByDate, displayedComponents: .date)
                     TextField("Condition Notes", text: $conditionNotes)
+                }
+                
+                Section(header: Text("Photo")) {
+                    PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                        Label("Select Photo", systemImage: "camera")
+                    }
+                    
+                    if let imageData = imageData,
+                       let uiImage = UIImage(data: imageData) {
+                        HStack {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxHeight: 100)
+                                .cornerRadius(8)
+                                .shadow(radius: 2)
+                            
+                            Spacer()
+                            
+                            Button("Remove Photo") {
+                                self.imageData = nil
+                                self.selectedPhotoItem = nil
+                            }
+                            .foregroundColor(.red)
+                        }
+                    }
+                }
+                .onChange(of: selectedPhotoItem) { _, newItem in
+                    Task {
+                        if let data = try? await newItem?.loadTransferable(type: Data.self) {
+                            imageData = data
+                        }
+                    }
                 }
                 
                 Section {
@@ -588,7 +657,8 @@ struct LedgerDetailView: View {
                             .aspectRatio(contentMode: .fit)
                             .frame(maxHeight: 300)
                             .cornerRadius(12)
-                            .shadow(radius: 4)
+                            .shadow(color: .black.opacity(0.2), radius: 6, x: 0, y: 2)
+                            .padding(.leading, 28)
                     }
                 }
                 
