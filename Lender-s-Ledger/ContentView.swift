@@ -523,6 +523,7 @@ struct ContentView: View {
     @State private var showingDeleteConfirmation = false
     @State private var itemToDelete: LedgerItem?
     @State private var indexSetToDelete: IndexSet?
+    @State private var isShowingQRScanner = false
     
     var body: some View {
         NavigationView {
@@ -607,6 +608,15 @@ struct ContentView: View {
             .listStyle(.insetGrouped) // A modern iOS list style.
             .navigationTitle("Lender's Ledger")
             .toolbar {
+                // The "Scan QR" button in the top-left corner.
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        isShowingQRScanner = true
+                    } label: {
+                        Image(systemName: "qrcode.viewfinder")
+                    }
+                }
+                
                 // The "+" button in the top-right corner.
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
@@ -619,6 +629,9 @@ struct ContentView: View {
             // This presents the `AddItemView` as a sheet when `isShowingAddItemView` is true.
             .sheet(isPresented: $isShowingAddItemView) {
                 AddItemView(viewModel: viewModel)
+            }
+            .sheet(isPresented: $isShowingQRScanner) {
+                QRCodeScannerView(viewModel: viewModel)
             }
             .searchable(text: $searchText, prompt: "Search items or people")
             .alert("Confirm Deletion", isPresented: $showingDeleteConfirmation) {
@@ -810,6 +823,7 @@ struct LedgerDetailView: View {
     @EnvironmentObject var calendarManager: CalendarManager
     @State private var isShowingEditView = false
     @State private var isShowingShareSheet = false
+    @State private var isShowingQRShare = false
     @State private var shareText = ""
     
     var body: some View {
@@ -911,6 +925,16 @@ struct LedgerDetailView: View {
                 if !item.isArchived {
                     Divider()
                     VStack(spacing: 12) {
+                        // Share QR Code Button
+                        Button {
+                            isShowingQRShare = true
+                        } label: {
+                            Label("Share via QR Code", systemImage: "qrcode")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .foregroundColor(.purple)
+                        
                         // Calendar Button (only for items with return dates)
                         if item.returnByDate != nil {
                             Button {
@@ -992,6 +1016,9 @@ struct LedgerDetailView: View {
         }
         .sheet(isPresented: $isShowingShareSheet) {
             ShareSheet(items: [shareText])
+        }
+        .sheet(isPresented: $isShowingQRShare) {
+            QRCodeShareView(item: item)
         }
     }
     
